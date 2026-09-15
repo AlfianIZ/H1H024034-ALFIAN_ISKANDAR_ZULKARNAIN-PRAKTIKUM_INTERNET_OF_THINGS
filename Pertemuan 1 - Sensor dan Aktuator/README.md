@@ -121,7 +121,8 @@ void loop() {
 
 ### Pertanyaan Percobaan 1A
 1. **Gambarkan diagram alur (flowchart) proses akuisisi data sensor DHT22 pada program di atas!**  
-   [gambar]
+   <img width="617" height="1064" alt="Diagram Tanpa Judul drawio" src="https://github.com/user-attachments/assets/bb38a505-0987-42d2-9d27-b2ee5035c1e3" />
+
 
 2. **Apa fungsi dari perintah `isnan()` pada program tersebut?**  
    Fungsi perintah `isnan()` adalah untuk memeriksa apakah suatu nilai float bukan merupakan angka yang valid. Jika sensor gagal membaca dan menghasilkan `NaN`, perintah `isnan()` memungkinkan program membedakan antara data valid dan data gagal/error, sehingga program tidak akan menampilkan nilai yang tidak valid.

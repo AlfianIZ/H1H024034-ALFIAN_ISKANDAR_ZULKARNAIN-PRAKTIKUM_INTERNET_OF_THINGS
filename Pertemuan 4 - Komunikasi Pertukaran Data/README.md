@@ -423,3 +423,29 @@ pinMode(buzzerPin, OUTPUT); // Ditambahkan: Set pin buzzer sebagai OUTPUT
 dht.begin();
 ```
 - Menambahkan baris `pinMode(buzzerPin, OUTPUT)` untuk mengonfigurasi pin GPIO 14 sebagai pin keluaran pengendali buzzer.
+
+## 4. Pertanyaan
+### 4.1 Pertanyaan Praktikum Percobaan 4A
+1. Gambarkan diagram alur (flowchart) proses penerimaan dan pemrosesan pesan pada fungsi callback di atas!
+[GAMBAR]
+
+2. Jelaskan mengapa fungsi client.subscribe() dipanggil di dalam fungsi hubungkanMQTT(), bukan di dalam setup()! 
+
+    Jawaban : subscribe() dipanggil di hubungkanMQTT() karena subscription terikat pada sesi koneksi ke broker. Di setup(), koneksi belum dibuat karena baru sebatas dikonfigurasi lewat setServer(), sehingga subscribe di sana akan gagal. Selain itu, setup() hanya berjalan sekali, sedangkan koneksi bisa putus kapan saja. Ketika putus lalu tersambung lagi, broker menganggapnya sesi baru dan subscription lama hilang. Karena hubungkanMQTT() dipanggil ulang setiap kali koneksi terputus, topic otomatis di-subscribe lagi setelah connect() berhasil. Kalau diletakkan di setup(), ESP8266 memang tersambung kembali setelah reconnect, tetapi tidak akan menerima pesan apa pun.
+
+
+### 4.2 Pertanyaan Praktikum Percobaan 4B
+1. Mengapa penggunaan delay() yang lama sebaiknya dihindari pada program yang menggabungkan proses publish dan subscribe secara bersamaan?
+
+    Jawaban : Fungsi delay() bersifat blocking: selama delay berjalan, prosesor hanya menunggu dan tidak menjalankan instruksi lain, termasuk client.loop(). Padahal client.loop() inilah yang bertugas memproses pesan masuk (subscribe), mengirim keepalive ping ke broker, dan menjaga koneksi MQTT tetap hidup. Jika program memakai delay(5000) untuk mengatur interval publish, selama 5 detik itu ESP8266 tidak bisa menerima perintah ON/OFF dari topik unsoed/panas/perintah, sehingga respons aktuator terlambat atau bahkan pesan terlewat. Delay yang terlalu lama juga bisa membuat broker menganggap klien tidak aktif dan memutus koneksi. Karena itu, program di atas memakai pendekatan non-blocking dengan millis(): waktu publish hanya dibandingkan dengan selisih waktu terakhir, sehingga loop() terus berputar dan client.loop() dipanggil berulang tanpa henti. Dengan cara ini, publish data sensor tiap 5 detik dan penerimaan perintah dapat berjalan bersamaan tanpa saling menghambat.
+
+2. Jelaskan cara kerja mekanisme non-blocking menggunakan fungsi millis() pada program di atas! 
+
+    Jawaban : Fungsi millis() mengembalikan jumlah milidetik sejak ESP8266 dinyalakan, dan nilainya terus bertambah sendiri tanpa menghentikan program. Mekanisme non-blocking memanfaatkan hal ini sebagai "jam" untuk memeriksa apakah sudah waktunya melakukan sesuatu, bukan menyuruh program menunggu. Pada program tersebut, variabel waktuTerakhirPublish menyimpan catatan waktu saat data terakhir dikirim, dan intervalPublish bernilai 5000 ms. Di dalam loop(), kondisi millis() - waktuTerakhirPublish > intervalPublish dicek pada setiap putaran. Selama selisihnya belum melewati 5000 ms, kondisi bernilai salah, blok publish dilewati, dan loop() langsung berputar lagi dalam hitungan mikrodetik. Begitu selisihnya lebih dari 5000 ms, kondisi menjadi benar: waktuTerakhirPublish diperbarui ke millis() saat itu (sebagai titik awal hitungan 5 detik berikutnya), lalu suhu dibaca dan dipublish ke broker. Di antara pengecekan-pengecekan itu, client.loop() terus dipanggil sehingga pesan perintah dari topik unsoed/panas/perintah dapat langsung diproses lewat fungsi callback(), dan koneksi MQTT tetap terjaga. Jadi publish berjalan terjadwal tiap 5 detik, sementara subscribe tetap responsif setiap saat, seolah-olah dua tugas berjalan bersamaan padahal sebenarnya hanya satu alur program yang berputar cepat.
+
+3. Apa yang akan terjadi apabila fungsi client.loop() jarang dipanggil (misalnya hanya sekali setiap 10 detik)? 
+
+    Jawaban :  Jika client.loop() hanya dipanggil sekali tiap 10 detik, ada tiga dampak utama.
+    Pertama, perintah yang masuk terlambat diproses. Pesan dari topik unsoed/panas/perintah memang sudah tiba di buffer koneksi, tetapi callback() baru dijalankan saat client.loop() dipanggil. Akibatnya LED bisa telat menyala atau mati hingga 10 detik setelah perintah dikirim, dan jika banyak pesan menumpuk, sebagian bisa terlewat atau diproses sekaligus secara beruntun.
+    Kedua, koneksi berisiko diputus broker. Pada PubSubClient, keepalive bawaan adalah 15 detik. Klien harus mengirim ping lewat client.loop() dalam rentang itu. Kalau jeda 10 detik ditambah keterlambatan lain (misalnya proses WiFi atau pembacaan sensor) melewati batas tersebut, broker menganggap klien mati dan memutus koneksi. Program kemudian masuk ke hubungkanMQTT(), lalu reconnect dan subscribe ulang, sehingga pesan yang dikirim saat terputus bisa hilang karena QoS 0.
+    Ketiga, jadwal publish menjadi tidak akurat. Meskipun ada pengecekan millis(), kondisi itu hanya dievaluasi jika loop() berputar cepat. Bila seluruh loop() tertahan atau client.loop() dipanggil jarang, publish yang seharusnya tiap 5 detik bisa molor dan tidak lagi teratur.
